@@ -1,0 +1,29 @@
+# Build files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.lib
+
+# Qt moc/compile outputs
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+*.qrc.dep
+
+# Makefiles & CMake auto-generated
+Makefile
+CMakeFiles/
+CMakeCache.txt
+*.pro.user
+*.qmake.stash
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
