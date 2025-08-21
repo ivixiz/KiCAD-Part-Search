@@ -1,0 +1,2 @@
+[hatch]
+kicad = hatch_kicad.hooks
