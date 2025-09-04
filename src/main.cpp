@@ -29,8 +29,8 @@ int main(int argc, char** argv) {
 
     QWidget w; w.setWindowTitle("Attribute Search");
 
-    //PartSupplier* currentSupplier = new MouserSupplier();
-    PartSupplier* currentSupplier = new DigikeySupplier();
+    PartSupplier* currentSupplier = new MouserSupplier();
+    //PartSupplier* currentSupplier = new DigikeySupplier();
 
     QVBoxLayout* main = new QVBoxLayout(&w);
     QHBoxLayout* top = new QHBoxLayout;

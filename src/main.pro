@@ -3,7 +3,7 @@ QT       += core gui network concurrent widgets
 INCLUDEPATH += core
 CONFIG   += c++17
 TEMPLATE += app
-TARGET   = HTMLscraper
+TARGET   = main
 
 SOURCES += \
     main.cpp \
