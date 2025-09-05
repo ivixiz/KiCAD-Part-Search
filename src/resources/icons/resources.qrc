@@ -2,5 +2,7 @@
     <qresource prefix="/icons">
         <file>settings.svg</file>
         <file>settings.png</file>
+        <file>16x16px-mouser.png</file>
+        <file>16x16px-digikey.png</file>
     </qresource>
 </RCC>
