@@ -1,30 +1,19 @@
 // FILE: core/partdata.h
 #pragma once
-
-#include "core/pricebreak.h"
-#include "core/utils.h"
 #include <QString>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QVariant>
-#include <QPixmap>
-#include <QFontMetrics>
-#include <QtMath>
-
-
+#include <QList>
+#include "pricebreak.h"
 struct PartData {
-    QString  partNumber;
-    QString  manufacturer;
-    QString  description;
-    QString  datasheetUrl;
-    QString  availability;
-    float    price;
-    int      stock;
-    QPixmap  image;    
-    QString  imageUrl; 
-    QList<PriceBreak> priceBreaks;
-
-    static PartData fromJson(const QJsonObject& obj);
+    QString suppl;
+    QString imgUrl;
+    QString prtnm;
+    QString avail;
+    QString curr;
+    QString mfrno;
+    QString mfr;
+    QString descr;
+    QString prdUrl;
+    QString dsUrl;
+    QList<PriceBreak> breaks;
 };
-
 Q_DECLARE_METATYPE(PartData)

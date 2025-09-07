@@ -3,6 +3,7 @@
 #include "partsupplier.h"
 #include "utils.h"
 #include "partdata.h"
+#include "config.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -18,25 +19,27 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QScrollArea>
-
-#define IMG_RESULT_SIZE_X 120
-#define IMG_RESULT_SIZE_Y 120
+#include <QTextEdit>
+#include <QPointer>
 
 //extern QVBoxLayout* resultsLayout;
-extern QNetworkAccessManager* globalNetMgr;
-
 class MouserSupplier : public PartSupplier {
+    friend class MainWindow;
+    Q_OBJECT
 public:
+    explicit MouserSupplier(QNetworkAccessManager& mgr, QObject* parent = nullptr);
+    ~MouserSupplier() override = default;
     QString name() const override { return "Mouser"; }
-    QNetworkRequest                     searchRequest(const QString& keyword, int offset, QByteArray &outPayload) override;
+    QNetworkRequest                     searchRequest(const QString& keyword, int limit, int offset, QByteArray &outPayload) override;
     QList<QJsonObject>                  parseResults(const QByteArray &response) override;
-    QWidget*                            createPartCard(const QJsonObject &part) override;
     int                                 totalFromJson(const QByteArray &response);
+    PartData                            toPartData(const QJsonObject& part) override;
 private:
     void                                fetchImageIntoWidget(const QString& url, QLabel* image) override;
     QList<PriceBreak>                   parsePriceBreaks(const QJsonObject& part);
     std::tuple<QString,QString,QString> parseAvailabilityOnOrder(const QJsonObject& part);
-    
+
+    //QWidget*                            createPartCard(const QJsonObject &part) override; 
     //void fetchThumbnail(PartData& part, std::function<void(QPixmap)> callback)  override;
     //void appendResults(const QByteArray &json_data) override;
 };

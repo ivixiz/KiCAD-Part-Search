@@ -1,33 +1,24 @@
 // FILE: core/partmodel.h
 #pragma once
-#include "partdata.h"
-#include "api/partsupplier.h"
 
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QNetworkAccessManager>
 #include <QAbstractListModel>
-
-extern QNetworkAccessManager* globalNetMgr;
-extern float VAT;
-extern int currentLoaded;
+#include <QSize>
+#include "config.h"
+#include "partdata.h"
 
 class PartModel : public QAbstractListModel {
     Q_OBJECT
-  public:
-    enum Roles { PartRole = Qt::UserRole + 1 };
+public:
+    explicit PartModel(QObject* parent = nullptr);
 
-    explicit PartModel(PartSupplier* supplier, QObject* parent = nullptr);
-    void addParts(const QList<PartData>& parts);
-    int rowCount(const QModelIndex& = {}) const override;
-    QVariant data(const QModelIndex& idx, int role) const override;
-    QHash<int,QByteArray> roleNames() const override;
+    QList<PartData> parts;
+
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+
+    void addParts(const QList<PartData>& newParts);
+    void prependParts(const QList<PartData>& newParts);
+    void removeFirst();
+    void removeLast();
     void clear();
-
-  private:
-    QList<PartData> items;
-    QNetworkAccessManager* netMgr;
-    PartSupplier* supplier = nullptr;
-
-    void fetchThumbnail(int row);
 };

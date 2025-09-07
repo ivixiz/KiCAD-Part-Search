@@ -4,7 +4,7 @@
 #include <QWidget>
 #include <QScrollBar>
 #include "partdata.h"
-extern float VAT;
+extern const float VAT;
 
 
 class PartCardWidget : public QWidget {

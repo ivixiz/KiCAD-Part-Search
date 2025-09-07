@@ -2,82 +2,496 @@
 #include "mainwindow.h"
 
 
-void MainWindow::fetchPartsAsync(PartSupplier* supplier, const QString& keyword, int offset, bool dir) {
-    if (currentReply && currentReply->isRunning()) {
-        currentReply->abort();
-        currentReply->deleteLater();
+#define LOG_ON
+
+MainWindow::MainWindow(QWidget* parent):QWidget(parent){
+    setWindowTitle("Part Search");
+    resize(SVAL(WINDOW_SIZE_X), SVAL(WINDOW_SIZE_Y));
+    //======================== INITIALIZE ========================
+    QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    QHBoxLayout* topLayout = new QHBoxLayout;
+    QHBoxLayout* bottomLayout = new QHBoxLayout;
+    QPushButton* btnSettings = new QPushButton;
+    QPushButton* importBtn = new QPushButton("Import to KiCAD");
+    QPushButton* cancelBtn = new QPushButton("Cancel");
+    QComboBox*   combobox = new QComboBox;
+
+    debugOutputLabel = new QLabel;
+    partModel = new PartModel(this);
+    input = new QLineEdit;
+    searchButton = new QPushButton("Search");
+    resultsView = new QListView(this);
+    //=============================== LAYOUT ===============================
+    input->setPlaceholderText("Enter keyword or part number");
+    input->installEventFilter(this);
+
+    combobox->setIconSize(QSize(SVAL(ICON_COMBOBOX_SIZE), SVAL(ICON_COMBOBOX_SIZE)));
+    initSupplier(SVAL(SUPPLIER_DEFAULT), combobox); //default supplier
+
+    btnSettings->setIcon(QIcon(SSTR(ICON_SETTINGS_PATH)));
+    btnSettings->setIconSize(QSize(SVAL(ICON_SETTINGS_SIZE),SVAL(ICON_SETTINGS_SIZE)));
+    btnSettings->setToolTip("Settings");
+    btnSettings->setCheckable(true);
+
+    topLayout->addWidget(input);
+    topLayout->addWidget(searchButton);
+    topLayout->addWidget(combobox);
+    topLayout->addWidget(btnSettings);
+    mainLayout->addLayout(topLayout);
+
+    resultsView->setModel(partModel);
+    resultsView->setSelectionMode(QAbstractItemView::SingleSelection);
+    resultsView->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);             
+    resultsView->setUniformItemSizes(false);        
+    resultsView->setResizeMode(QListView::Adjust); 
+    resultsView->setWordWrap(true);
+    resultsView->setWrapping(false);
+
+
+    mainLayout->addWidget(resultsView);
+
+    debugOutputLabel->setStyleSheet("font-style: italic;");
+    debugOutputLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+#ifdef LOG_ON
+    qInstallMessageHandler(logHandler);
+#endif
+
+    bottomLayout->addWidget(debugOutputLabel);
+    bottomLayout->addWidget(importBtn);
+    bottomLayout->addWidget(cancelBtn);
+    mainLayout->addLayout(bottomLayout);
+
+    QScrollBar* bar = resultsView->verticalScrollBar();
+    bar->setSingleStep(SVAL(SCROLL_STEP));
+
+    input->setFocus();//set foscus to input field at start
+
+
+    // ---------------------- SETTINGS PANEL ----------------------
+    QWidget* settingsPanel = new QWidget(this);
+    QVBoxLayout* settingsLayout = new QVBoxLayout(settingsPanel);
+    settingsPanel->setLayout(settingsLayout);
+    for (int i = 0; i < 10; ++i) {
+        QTextEdit* te = new QTextEdit;
+        QLabel* label = new QLabel(QString("Setting %1").arg(i+1));
+        QHBoxLayout* line = new QHBoxLayout;
+        te->setPlaceholderText(QString("Setting %1").arg(i+1));
+        te->setFixedHeight(30);
+        line->addWidget(label);
+        line->addWidget(te);
+        settingsLayout->addLayout(line);
     }
-    QByteArray payload;
-    //qInfo() << "Requesting...";
-    QNetworkRequest req = supplier->searchRequest(keyword, offset, payload); // JSON request
-    currentReply = globalNetMgr->post(req, payload); // get reply
-    //qInfo() << "currentReply == " << currentReply;
-    QObject::connect(currentReply, &QNetworkReply::finished, [=]() {                     qInfo() << "Request received";
-        QVariant st = currentReply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
-        int status = st.isValid() ? st.toInt() : -1;                                     qInfo() << "HTTP status:" << status;
+    settingsLayout->addStretch();
+    scrollSettings = new QScrollArea(this);
+    scrollSettings->setWidget(settingsPanel);
+    scrollSettings->setWidgetResizable(true);
+    scrollSettings->setVisible(false);
+    mainLayout->insertWidget(1, scrollSettings); 
 
-        if (currentReply->error() != QNetworkReply::NoError) { qWarning() << "Network error:" << currentReply->errorString(); }
-        QByteArray resp = currentReply->readAll();                                       qInfo() << "Updating current reply...";
-
-        currentReply->deleteLater(); 
-        currentReply = nullptr;
-
-        static int total = 0;
-        if(firstReq){total = supplier->totalFromJson(resp); firstReq = false;}           qInfo() << "Parsing results...";
-
-        QList<QJsonObject> results = supplier->parseResults(resp);
-        int pageLoaded = results.size();
-
-        int oldValue = resultsList->verticalScrollBar()->value();
-        int oldMax   = resultsList->verticalScrollBar()->maximum();
-
-        if (!dir) {
-            // scrolling down → append in natural order
-            for (const auto& part : results) {
-                QWidget* card = supplier->createPartCard(part);
-                auto item = new QListWidgetItem;
-                item->setSizeHint(card->sizeHint());
-                resultsList->addItem(item);
-                resultsList->setItemWidget(item, card);
-            }
-        } else {
-            // scrolling up → prepend in reverse order
-            for (int i = results.size() - 1; i >= 0; --i) {
-                QWidget* card = supplier->createPartCard(results[i]);
-                auto item = new QListWidgetItem;
-                item->setSizeHint(card->sizeHint());
-                resultsList->insertItem(0, item);
-                resultsList->setItemWidget(item, card);
-            }
-
-            // keep scroll position stable
-            int newMax = resultsList->verticalScrollBar()->maximum();
-            int delta  = newMax - oldMax;
-            resultsList->verticalScrollBar()->setValue(oldValue + delta);
+    //===================================== CONNECT ====================================
+    connect(resultsView, &QListView::activated, this, [this](const QModelIndex &index){
+        if (!index.isValid()) return;
+        exportData();
+    });
+    connect(btnSettings, &QPushButton::toggled, this, [this](bool checked){
+        this->resultsView->setVisible(!checked);
+        this->scrollSettings->setVisible(checked);
+        checked ? this->adjustSize() : resize(700, 500);
+    });
+    connect(cancelBtn, &QPushButton::clicked, [=]() { qInfo() << "Canceled"; });
+    connect(bar, &QScrollBar::valueChanged, this, &MainWindow::onScrollChanged);
+    connect(searchButton, &QPushButton::clicked, this, &MainWindow::onSearch);
+    connect(input, &QLineEdit::returnPressed, this, &MainWindow::onSearch);
+    connect(combobox, &QComboBox::currentTextChanged, this, [=](const QString& text) {
+        qDebug() << "MainWindow > Combobox switched";
+        bar->blockSignals(true);
+        ++m_requestEpoch;
+        if (currentReply) { // abort old reply
+            currentReply->abort();
+            currentReply->deleteLater();
+            currentReply = nullptr;
         }
+        resetSearch();
+        if (currentSupplier) {
+            currentSupplier->deleteLater();
+            currentSupplier = nullptr;
+        }
+        if      (text == "Mouser") currentSupplier = new MouserSupplier(netMgr); 
+        else if (text == "DigiKey") currentSupplier = new DigikeySupplier(netMgr); // create new supplier
 
-        qInfo() << "Loaded"     << pageLoaded 
-                << "this page," << (dir ? currentLoaded -= pageLoaded : currentLoaded += pageLoaded)
-                << "of"         << total
-                << "results";
+        bar->blockSignals(false); 
+    });
+}
+MainWindow::~MainWindow() {
+    resetSearch();
+    delete currentSupplier;
+    currentSupplier = nullptr;
+}
+void MainWindow::initSupplier(int which, QComboBox* combobox) {
+    //error checks
+    if (!combobox) { qWarning() << "Error at initSupplier: combobox is null";   return; }
+    const size_t supplierCount = suppliers.size();
+    if (which < 0 || static_cast<size_t>(which) >= supplierCount) { 
+        qWarning() << "Error at initSupplier: invalid supplier index" << which; return; }
 
-        if (pageLoaded == 0 || total == 0 || currentLoaded >= total) {
-            qInfo() << "No more results";
-            noResults = true;
+    combobox->blockSignals(true);
+    combobox->clear();
+    const SupplierType& selected = suppliers[which];
+    combobox->addItem(QIcon(selected.iconPath), selected.name);
+    for (size_t i = 0; i < supplierCount; ++i) { //add the rest
+        if (static_cast<int>(i) == which) continue; //skip selected
+        const SupplierType& s = suppliers[i];
+        combobox->addItem(QIcon(s.iconPath), s.name);
+    }
+    combobox->setCurrentIndex(0);
+    combobox->blockSignals(false);
+    switch (which) {
+        case DIGIKEY:
+            currentSupplier = new DigikeySupplier(netMgr);
+            break;
+        case MOUSER:
+            currentSupplier = new MouserSupplier(netMgr);
+            break;
+        default:
+            qWarning() << "initSupplier: unexpected supplier index, defaulting to Mouser";
+            currentSupplier = new MouserSupplier(netMgr);
+            break;
+    }
+}
+void MainWindow::resetSearch() {
+    ++m_requestEpoch; // invalidate older replies
+    offset = 0;
+    resultssize = 0;
+    noResults = false;
+    firstReq = true;
+}
+void MainWindow::onSearch() {
+    QString kw = input->text().trimmed();
+    if (kw.isEmpty()) return;
+
+    currentKeyword = kw;
+    resetSearch();
+    qInfo() << "Searching for:" << currentKeyword;
+
+    fetchPartsAsync(currentSupplier, currentKeyword, false);
+    input->setFocus();
+}
+void MainWindow::fetchPartsAsync(PartSupplier* supplier,const QString& keyword,bool prepend = false){
+
+    if (prepend) { offset -= resultssize; }
+    else         { offset += resultssize; }
+    if (offset < 0) offset = 0;
+    //qDebug() << "fetchPartsAsync > Fetching parts...";
+    const quint64 epoch = m_requestEpoch;
+    QPointer<PartSupplier> sup = supplier;// becomes null if deleted
+    if (!sup) {qWarning() << "Error at fetchPartsAsync(): supplier is nullptr"; return; }
+    QByteArray payload;
+    //qDebug() << "keyword=" << keyword  << " offset=" << offset  << " payload=" << payload;
+    QNetworkRequest req = supplier->searchRequest(keyword, SVAL(REQUEST_LIMIT), offset, payload);
+    QNetworkReply* reply = netMgr.post(req, payload);
+    if(!reply) { qWarning() << "Error at fetchPartsAsync(): Network reply is nullptr"; return; } 
+    else       { currentReply = reply; /*qDebug() << "currentReply = " << currentReply; */ }
+    connect(reply, &QNetworkReply::finished, this,
+        [this, reply, sup, epoch, prepend]() {
+        qDebug() << "fetchPartsAsync > QNetworkReply finished";
+        if (epoch != m_requestEpoch || reply != currentReply || !sup || sup != currentSupplier) { reply->deleteLater(); return; }
+        
+        QByteArray resp = reply->readAll(); 
+        reply->deleteLater();
+        
+        if (reply == currentReply) currentReply = nullptr;
+
+        int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(); qInfo() << "HTTP status:" << status;
+        
+        if (status == 0 || reply->error() != QNetworkReply::NoError) {                qWarning() << "Network error:" << reply->errorString(); return; }
+        if (firstReq) { total = sup->totalFromJson(resp);                                qInfo() << "Total available parts:" << total; firstReq = false; }
+
+        qInfo() << "Parsing results...";
+    
+        const QList<QJsonObject> results = sup->parseResults(resp); //qInfo() << "First result:" << results.at(0);
+        
+        QList<PartData> newParts;
+        
+        
+        resultssize = results.size();
+        if(resultssize == 0){ noResults = true; qInfo() << "No more results"; return; }
+
+        newParts.reserve(resultssize);
+        for (const auto& part : results) { newParts.append(sup->toPartData(part)); }
+        if (newParts.isEmpty()) { noResults = true; return; }
+        const int prevCount = partModel->rowCount();
+        qDebug() << "prevCount:" << prevCount;
+
+        if (prepend) {
+            partModel->prependParts(newParts);
+            createCards(newParts, 0, sup, epoch, /*scroll to*/ newParts.size());
+            qDebug() << "Part card prepended";
+        } else {
+            partModel->addParts(newParts);
+            createCards(newParts, prevCount, sup, epoch, prevCount);
+            qDebug() << "New part card added";
+        }
+        
+        resultsView->doItemsLayout(); qDebug()  << "fetchPartsAsync > doItemsLayout";
+        resultsView->updateGeometry(); qDebug() << "fetchPartsAsync > updateGeometry";
+
+        if (prepend) { 
+            qDebug() << "scroll back after prepend...";  //problem was that it jumps to first
+            const int newAnchorRow = newParts.size();
+            QModelIndex newAnchor = partModel->index(newAnchorRow, 0);
+            if (newAnchor.isValid()) {
+                resultsView->scrollTo(newAnchor, QAbstractItemView::PositionAtTop);
+                if (auto* bar = resultsView->verticalScrollBar())
+                    bar->setValue(bar->value());
+            }
+        }else if(cardCreateFinished){ //jump to first newly added part
+            cardCreateFinished = false;
+            const int newAnchorRow = prevCount; // first new part index
+            QModelIndex newAnchor = partModel->index(newAnchorRow, 0);
+            if (newAnchor.isValid()) {
+                resultsView->scrollTo(newAnchor, QAbstractItemView::PositionAtTop);
+            }
+        }
+        
+        qInfo() << "Loaded" << offset+resultssize << "parts of" << total;
+#ifdef SAVE_RESPONSE //save json response for debugging
+        qInfo() << "Response body:" << resp;
+        QFile file("response.txt");
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(resp);
+            file.close();
+            qInfo() << "Response saved to response.txt";
+        } else {
+            qWarning() << "Cannot open file for writing:" << file.errorString();
+        }
+#endif
+    });
+}
+void MainWindow::createCards(const QList<PartData>& parts, int startRow, QPointer<PartSupplier> supplier, quint64 epoch, int scrollToRow)
+{
+    // do widget creation slightly later (safe), but handle scrolling AFTER layout
+    QTimer::singleShot(0, this, [this, parts, startRow, supplier, epoch, scrollToRow]() {
+        if (epoch != m_requestEpoch) {
+            qDebug() << "createCards aborted: epoch mismatch";
+            return;
+        }
+        if (!supplier) {
+            qWarning() << "createCards: supplier already deleted — abort creating cards";
             return;
         }
 
+        for (int i = 0; i < parts.size(); ++i) {
+            QModelIndex idx = partModel->index(startRow + i, 0);
+            if (!idx.isValid()) continue;
+            QWidget* card = createPartCard(parts.at(i), supplier, resultsView);
+            if (!card) continue;
+            card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+            card->setMinimumHeight(SVAL(IMG_RESULT_SIZE_Y) + SVAL(CARD_MARGIN));
+            resultsView->setIndexWidget(idx, card);
+        }
+
+        // Make sure view recalculates sizes
+        resultsView->doItemsLayout();
+        resultsView->updateGeometry();
+
+        // If requested, scroll to the requested row (first newly added part)
+        if (scrollToRow >= 0) {
+            // queue one more tick to ensure layout & geometry are stable
+            QTimer::singleShot(0, this, [this, scrollToRow]() {
+                QModelIndex anchor = partModel->index(scrollToRow, 0);
+                if (anchor.isValid()) {
+                    resultsView->scrollTo(anchor, QAbstractItemView::PositionAtTop);
+                    if (auto *sel = resultsView->selectionModel()) {
+                        sel->setCurrentIndex(anchor, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+                    }
+                    resultsView->setFocus();
+                } else {
+                    qDebug() << "createCards: anchor index invalid for scrollToRow =" << scrollToRow;
+                }
+            });
+        }
     });
 }
+QWidget* MainWindow::createPartCard(const PartData& part, QPointer<PartSupplier> supplier, QWidget* parent) {
+    QWidget* card = new QWidget(parent);
 
+    auto hCard = new QHBoxLayout(card);
+    // ............................... Image ...............................
+    QLabel* image = new QLabel;
+    image->setFixedSize(SVAL(IMG_RESULT_SIZE_X), SVAL(IMG_RESULT_SIZE_Y));
+    hCard->addWidget(image);
+    if (!part.imgUrl.isEmpty()) supplier->fetchImageIntoWidget(part.imgUrl, image); 
+    // ............................... Left column ...............................
+    auto leftCol = new QVBoxLayout;
+    leftCol->addWidget(selectableLabel(QString("<b>Part No:</b> %1").arg(part.prtnm), true));
+    leftCol->addWidget(selectableLabel(QString("<b>Mfr. No:</b> %1").arg(part.mfrno), true));
+    leftCol->addWidget(selectableLabel(QString("<b>Mfr.:</b> %1").arg(part.mfr), true));
+    QTextEdit* descrEdit = new QTextEdit;
+    descrEdit->setReadOnly(true);
+    descrEdit->setHtml(QString("<b>Description:</b><br>%1").arg(part.descr));
+    descrEdit->setFixedHeight(SVAL(DESCR_FIELD_SIZE));
+    leftCol->addWidget(descrEdit);
+    auto datasheetLabel = new QLabel(QString("<b>Datasheet:</b> <a href='%1'>Link</a>").arg(part.dsUrl));
+    datasheetLabel->setTextFormat(Qt::RichText);
+    datasheetLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    datasheetLabel->setOpenExternalLinks(true);
+    leftCol->addWidget(datasheetLabel);
+    leftCol->addStretch();
+    leftCol->setContentsMargins(0,0,0,0);
+    hCard->addLayout(leftCol, 1);
+    // ...................... Prices, Stock ................................
+    auto rightCol = new QVBoxLayout;
+    rightCol->setContentsMargins(0,0,0,0);
+    QString availText = QString("<b>Availability:</b> %1").arg(part.avail);
+    QLabel* availLabel = selectableLabel(availText, true);
+    if (part.avail.contains("None", Qt::CaseInsensitive) ||
+        part.avail.contains("Non-Stocked", Qt::CaseInsensitive) ||
+        part.avail == "0"){
+        availLabel->setStyleSheet("color: red");
+    } else {
+        availLabel->setStyleSheet("color: #00FF14");
+        
+    }
+    rightCol->addWidget(availLabel);
+    // .................... Prices header, names ...........................
+    auto hdr = new QHBoxLayout;
+    hdr->addWidget(selectableLabel("<b>Quantity</b>", true));
+    hdr->addWidget(selectableLabel("<b>Unit Price</b>", true));
+    hdr->addWidget(selectableLabel(QString("<b>Total+VAT%1%</b>").arg(float(SVAL(VAT)), 0, 'f', 0), true));
+    rightCol->addLayout(hdr);
+    // ................... Rows of Prices(quantity) .........................
+    auto pricesContainer = new QWidget;
+    auto pricesLayout = new QVBoxLayout(pricesContainer);
+    pricesLayout->setContentsMargins(0,0,0,0);
+    pricesLayout->setSpacing(4);
 
+    for (const auto &pb : part.breaks) {
+        float ext = pb.price * pb.qty * float(SVAL(VAT)+100);
+        auto row = new QHBoxLayout;
+        row->addWidget(selectableLabel(QString::number(pb.qty)));
+        row->addWidget(selectableLabel(QString(" %1 %2").arg(QString::number(pb.price, 'f', 2), pb.curr)));
+        row->addWidget(selectableLabel(QString(" %1 %2").arg(QString::number(ext, 'f', 2), pb.curr)));
+        pricesLayout->addLayout(row);
+    }
 
-        //qInfo() << "Response body:" << resp;
-        // QFile file("resp.txt");
-        // if (file.open(QIODevice::WriteOnly)) {
-        //     file.write(resp);
-        //     file.close();
-        //     qInfo() << "Response saved to resp.txt";
-        // } else {
-        //     qWarning() << "Cannot open file for writing:" << file.errorString();
-        // }
+    auto scrollPrices = new QScrollArea;
+    scrollPrices->setWidget(pricesContainer);
+    scrollPrices->setWidgetResizable(true);
+    scrollPrices->setFixedHeight(SVAL(PRICE_FIELD_SIZE));
+    scrollPrices->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    
+    rightCol->addWidget(scrollPrices);
+    rightCol->addStretch();
+    // ......................... Bold vertical line .............................
+    QFrame* vline = new QFrame;
+    vline->setFrameShape(QFrame::VLine);
+    vline->setFrameShadow(QFrame::Sunken);
+    vline->setStyleSheet("background-color: #aaaaaa;");
+    hCard->addWidget(vline);
+    
+    hCard->addLayout(rightCol, 1);
+    return card;
+}// ############################################ FUNCTION END ################################################################
+void MainWindow::onScrollChanged(int value){
+    QScrollBar* bar = resultsView->verticalScrollBar();
+    if (!bar) return;
+    //qDebug() << "Scrollbar:" << value << " of " << bar->maximum();
+    // ============================= Lazy Scroll Down =============================
+    if (value >= bar->maximum() - SVAL(SCROLL_STEP) && !currentReply && !noResults) {
+        qInfo() << "Loading new results...";
+        fetchPartsAsync(currentSupplier, currentKeyword, false);
+        while (partModel->rowCount() > SVAL(LIMIT_RESULTS)) { //optimization
+            //qDebug() << "onScrollChanged >  partModel->removeFirst();";
+            killRowWidget(0);
+            partModel->removeFirst(); //clear previous results
+        }
+    }
+    // =============================== Lazy Scroll Up ==============================
+    if (value <= SVAL(SCROLL_STEP) && offset > 0 && !currentReply) {
+        qInfo() << "Loading previous results...";
+        fetchPartsAsync(currentSupplier, currentKeyword, true);
+        while (partModel->rowCount() > SVAL(LIMIT_RESULTS)) { //optimization
+            int last = partModel->rowCount() - 1; //clear previous results
+            killRowWidget(last);
+            partModel->removeLast();
+        }
+    }
+}
+void MainWindow::killRowWidget(int row) {
+    if (!resultsView || row < 0 || row >= partModel->rowCount()) return;
+    QModelIndex idx = partModel->index(row, 0);
+    if (!idx.isValid()) return;
+    QWidget* w = resultsView->indexWidget(idx);
+    if (w) {
+        resultsView->setIndexWidget(idx, nullptr);
+        w->deleteLater();
+    }
+}
+void MainWindow::killAllWidgets() {
+    if (!resultsView) return;
+    for (int i = partModel->rowCount() - 1; i >= 0; --i) {
+        killRowWidget(i);
+    }
+}
+bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
+    if (obj == input && event->type() == QEvent::KeyPress) {
+        QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
+        if (keyEvent->key() == Qt::Key_Up || keyEvent->key() == Qt::Key_Down) {
+            if (resultsView->model()->rowCount() > 0) {
+                resultsView->setFocus();
+                QModelIndex current = resultsView->currentIndex();
+                if (!current.isValid()) {
+                    QModelIndex first = resultsView->model()->index(0, 0);
+                    if (first.isValid()) {
+                        resultsView->setCurrentIndex(first);
+                        if (auto *sel = resultsView->selectionModel()) {
+                            sel->setCurrentIndex(first, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+                        }
+                        resultsView->setFocus();
+                    }
+                }
+            }
+            return true;
+        }
+    }
+    return QWidget::eventFilter(obj, event);
+}
+void MainWindow::exportData() {
+    qInfo() << "Importing part to KiCAD...";
+    QModelIndex idx = resultsView->currentIndex();
+    if (!idx.isValid()) { qWarning() << "No part selected for export"; return; }
+    QVariant v = partModel->data(idx, Qt::UserRole);
+    if (!v.isValid()) { qWarning() << "Invalid part data at index:" << idx; return; }
+    PartData part = v.value<PartData>();
+    // Create JSON object
+    QJsonObject obj;
+    obj["prtnm"] = part.prtnm;
+    obj["mfrno"] = part.mfrno;
+    obj["mfr"]   = part.mfr;
+    obj["descr"] = part.descr;
+    obj["avail"] = part.avail;
+    obj["prdUrl"] = part.prdUrl;
+    obj["dsUrl"]  = part.dsUrl;
+    QJsonArray breaks;
+    for (const auto& pb : part.breaks) {
+        QJsonObject b;
+        b["qty"]   = pb.qty;
+        b["price"] = pb.price;
+        b["curr"]  = pb.curr;
+        breaks.append(b);
+    }
+    obj["priceBreaks"] = breaks;
+    QJsonDocument doc(obj);
+    // --------------------- stdout -------------------------
+    qInfo().noquote() << doc.toJson(QJsonDocument::Compact);
+    // ---------------------- file --------------------------
+    QFile file("export.json");
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(doc.toJson(QJsonDocument::Indented));
+        file.close();
+        qInfo() << "Part exported to export.json";
+    } else {
+        qWarning() << "Cannot open export.json for writing:" << file.errorString();
+    }
+    this->close(); //close window after export
+}

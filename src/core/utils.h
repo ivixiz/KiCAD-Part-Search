@@ -8,7 +8,6 @@
 #include <QFrame>
 #include <QString>
 #include <QList>
-
 extern QLabel* debugOutputLabel;
 
 void      logHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg);

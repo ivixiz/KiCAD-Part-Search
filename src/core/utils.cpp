@@ -2,7 +2,6 @@
 #include "core/utils.h"
 
 QLabel* debugOutputLabel = nullptr;
-
 void logHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
     Q_UNUSED(type)
     Q_UNUSED(context)

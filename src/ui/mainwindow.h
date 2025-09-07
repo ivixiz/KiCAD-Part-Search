@@ -1,25 +1,67 @@
 // FILE: ui/mainwindow.h
-
 #pragma once
-
 #include "api/partsupplier.h"
+#include "core/config.h"
 
 #include <QWidget>
 #include <QNetworkReply>
 #include <QListWidget>
 #include <QDebug>
 #include <QScrollBar>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLineEdit>
+#include <QFile>
+#include <QEvent>
+#include <QKeyEvent>
+#include <QComboBox>
+#include <QPointer>
+#include <QTimer>
+#include <QPair>    
+#include "api/partsupplier.h"
+#include "api/mousersupplier.h"
+#include "api/digikeysupplier.h"
+#include "core/partmodel.h"
 
-extern QNetworkAccessManager* globalNetMgr;
-extern QListWidget*           resultsList;
-extern int                    currentLoaded;
-extern QNetworkReply*         currentReply;
-extern bool                   noResults;
-extern bool                   firstReq;
+//#define SAVE_RESPONSE
+
 
 class MainWindow : public QWidget {
     Q_OBJECT
 public:
-    void fetchPartsAsync(PartSupplier* supplier, const QString& keyword, int offset, bool dir);
-    
+    explicit MainWindow(QWidget* parent = nullptr);
+    ~MainWindow() override;
+    QNetworkAccessManager netMgr;
+private slots:
+    void onSearch();
+    void exportData();
+    void onScrollChanged(int value);
+    void fetchPartsAsync(PartSupplier* supplier, const QString& keyword, bool prepend);
+private:
+    PartModel* partModel;
+    QListView* resultsView;
+    QScrollArea* scrollSettings;
+    QNetworkReply*        currentReply = nullptr;
+    QPushButton*          searchButton;
+    QLineEdit*            input;
+    int offset = 0;
+    QString currentKeyword;
+    bool noResults = false;
+    int resultssize = 0;
+    bool firstReq = true;
+    bool enterPressed = false;
+    bool cardCreateFinished = false;
+    int total = 0; 
+    bool prepend = false;
+    quint64 m_requestEpoch = 0;
+    PartSupplier* currentSupplier;
+
+    void killRowWidget(int row);
+    void killAllWidgets();
+    void resetSearch();
+    bool eventFilter(QObject* obj, QEvent* event) override;
+    void initSupplier(int which, QComboBox* combobox);
+    void createCards(const QList<PartData>& parts, int startRow, QPointer<PartSupplier> supplier, quint64 epoch, int scrollToRow = -1); 
+    QWidget* createPartCard(const PartData& part, QPointer<PartSupplier> supplier,QWidget* parent);
 };

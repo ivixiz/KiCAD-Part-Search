@@ -3,6 +3,7 @@
 #include "partsupplier.h"
 #include "utils.h"
 #include "partdata.h"
+#include "config.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -16,39 +17,33 @@
 #include <QScrollArea>
 #include <QHBoxLayout>
 #include <QList>
+#include <cfloat>
+#include <QTextEdit>
+#include <QPointer>
 
+#define V4
 
+static const QString BASE_V3_URL = QStringLiteral("https://api.digikey.com/products/v3/search/keyword");
 
-#define IMG_RESULT_SIZE_X 120
-#define IMG_RESULT_SIZE_Y 120
-
-extern QNetworkAccessManager* globalNetMgr;
-extern float VAT;
-extern int REQUEST_SIZE;
-
-#define CLIENTID_DIGIKEY "AAXLt5AGRxvXX4VzJa51MFzEGbttGvHh2LVPDzn5KZlN7GVi"
-#define CLIENT_SECRET    "rE05nGDWBqtY8qw20TJMfUCDB4I7VADGTwg4PGmPJJEtiT2jaDDT0e7ACOAQMoHh"
-#define TOKEN_URL        "https://api.digikey.com/v1/oauth2/token"
-#define SEARCH_URL       "https://api.digikey.com/products/v4/search/keyword"
 
 class DigikeySupplier : public PartSupplier {
+    friend class MainWindow;
+    Q_OBJECT
 public:
-    DigikeySupplier();
+    explicit DigikeySupplier(QNetworkAccessManager& mgr, QObject* parent = nullptr);
     ~DigikeySupplier() override = default;
 
     QString name() const override { return "DigiKey"; }
-    QNetworkRequest     searchRequest(const QString& keyword, int offset, QByteArray& outPayload) override;
+    QNetworkRequest     searchRequest(const QString& keyword, int limit, int offset, QByteArray& outPayload) override;
     QList<QJsonObject>  parseResults(const QByteArray& response) override;
-    QWidget*            createPartCard(const QJsonObject& part) override;
     void                fetchImageIntoWidget(const QString& url, QLabel* image) override;
     int                 totalFromJson(const QByteArray& resp);
+    PartData            toPartData(const QJsonObject& part) override;
 
 private:
     QString accessToken_;
     QDateTime tokenExpiry_;
-
     void                ensureToken();  
     void                fetchTokenSync();               
     QList<PriceBreak>   parsePriceBreaks(const QJsonObject& part);
-
 };

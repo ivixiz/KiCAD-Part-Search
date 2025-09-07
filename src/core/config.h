@@ -1,20 +1,39 @@
 //FILE: core/config.h
 #pragma once
+#include <QString>
+#include <vector>
+#define SVAL(idx) settings[idx].val
+#define SSTR(idx) settings[idx].str
 
-inline const int IMG_RESULT_SIZE_X  = 120;
-inline const int IMG_RESULT_SIZE_Y  = 120;
-inline const int WINDOW_SIZE_X      = 800;
-inline const int WINDOW_SIZE_Y      = 600;
-inline const int REQUEST_SIZE       = 30; //min 30 for Mouser, 10 faster for DigiKey
-inline const float VAT              = 0.23f;
-inline const int LIMIT_RESULTS      = 10; //actually will be size of response + LIMIT_RESULTS
-inline const int SCROLL_STEP        = 10;
-inline const int CARD_MARGIN        = 32;
-inline const int DESCR_FIELD_SIZE   = 40;
-inline const int PRICE_FIELD_SIZE   = 80;
-inline const int ICON_SETTINGS_SIZE = 20;
-inline const int ICON_COMBOBOX_SIZE = 16;
+enum SettingIndex {
+    IMG_RESULT_SIZE_X,
+    IMG_RESULT_SIZE_Y,
+    WINDOW_SIZE_X,
+    WINDOW_SIZE_Y,
+    SUPPLIER_DEFAULT,
+    REQUEST_LIMIT,
+    VAT,
+    LIMIT_RESULTS,
+    SCROLL_STEP,
+    CARD_MARGIN,
+    DESCR_FIELD_SIZE,
+    PRICE_FIELD_SIZE,
+    ICON_SETTINGS_SIZE,
+    ICON_COMBOBOX_SIZE,
+    ICON_SETTINGS_PATH,
+    ICON_MOUSER_PATH,
+    ICON_DIGIKEY_PATH,
+    CLIENTID_DIGIKEY,
+    CLIENT_SECRET,
+    TOKEN_URL,
+    SEARCH_URL,
+    API_KEY_MOUSER,
+    SETTING_COUNT // всегда последний, чтобы знать размер массива
+};
 
-#define ICON_SETTINGS_PATH ":/icons/settings.svg"
-#define ICON_MOUSER_PATH   ":/icons/16x16px-mouser.png"
-#define ICON_DIGIKEY_PATH  ":/icons/16x16px-digikey.png"
+typedef enum { DIGIKEY = 0, MOUSER = 1 } SupplierEnum;
+
+struct SupplierType { int id; QString name; QString iconPath; };
+extern const std::vector<SupplierType> suppliers;
+struct Settings { int id; int val; QString name; QString str; };
+extern Settings settings[SETTING_COUNT];

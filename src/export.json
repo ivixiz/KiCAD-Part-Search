@@ -1,0 +1,46 @@
+{
+    "avail": "None",
+    "descr": "RF Adapters - In Series Waterproof IP68 BNC Female to BNC Female Bulkhead Adapter, with Copper Body",
+    "dsUrl": "https://www.mouser.com/datasheet/3/6148/1/FMAD1266.pdf",
+    "mfr": "Fairview Microwave",
+    "mfrno": "FMAD1266",
+    "prdUrl": "https://www.mouser.pl/ProductDetail/Fairview-Microwave/FMAD1266?qs=2FehpBK1j94g%252Bz4VniyEHg%3D%3D",
+    "priceBreaks": [
+        {
+            "curr": "PLN",
+            "price": 71.25,
+            "qty": 1
+        },
+        {
+            "curr": "PLN",
+            "price": 66.38999938964844,
+            "qty": 10
+        },
+        {
+            "curr": "PLN",
+            "price": 63.63999938964844,
+            "qty": 25
+        },
+        {
+            "curr": "PLN",
+            "price": 62.7400016784668,
+            "qty": 50
+        },
+        {
+            "curr": "PLN",
+            "price": 61.4900016784668,
+            "qty": 100
+        },
+        {
+            "curr": "PLN",
+            "price": 60.630001068115234,
+            "qty": 250
+        },
+        {
+            "curr": "PLN",
+            "price": 60.20000076293945,
+            "qty": 500
+        }
+    ],
+    "prtnm": "67-FMAD1266"
+}
