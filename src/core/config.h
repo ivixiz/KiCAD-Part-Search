@@ -4,16 +4,23 @@
 #include <vector>
 #define SVAL(idx) settings[idx].val
 #define SSTR(idx) settings[idx].str
+#define SNM(idx) settings[idx].name
+#define CONSTRAIN_VISIBLE_SETTINGS 6
 
 enum SettingIndex {
+    VAT,
+    SUPPLIER_DEFAULT,
+    API_KEY_MOUSER,
+    DIGIKEY_CLIENTID,
+    DIGIKEY_CLSECRET,
+    DIGIKEY_TOKEN_URL,
+    DIGIKEY_SEARCH_URL,
+    REQUEST_LIMIT,
+    LIMIT_RESULTS,
     IMG_RESULT_SIZE_X,
     IMG_RESULT_SIZE_Y,
-    WINDOW_SIZE_X,
-    WINDOW_SIZE_Y,
-    SUPPLIER_DEFAULT,
-    REQUEST_LIMIT,
-    VAT,
-    LIMIT_RESULTS,
+    MAINWINDOW_SIZE_X,
+    MAINWINDOW_SIZE_Y,
     SCROLL_STEP,
     CARD_MARGIN,
     DESCR_FIELD_SIZE,
@@ -23,11 +30,7 @@ enum SettingIndex {
     ICON_SETTINGS_PATH,
     ICON_MOUSER_PATH,
     ICON_DIGIKEY_PATH,
-    CLIENTID_DIGIKEY,
-    CLIENT_SECRET,
-    TOKEN_URL,
-    SEARCH_URL,
-    API_KEY_MOUSER,
+    CONFIG_FILENAME,
     SETTING_COUNT // всегда последний, чтобы знать размер массива
 };
 

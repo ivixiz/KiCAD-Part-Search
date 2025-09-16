@@ -3,9 +3,27 @@
 
 QLabel* debugOutputLabel = nullptr;
 void logHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
-    Q_UNUSED(type)
     Q_UNUSED(context)
-    if (debugOutputLabel) {
+    QTextStream out(stdout);
+    switch (type) {
+    case QtDebugMsg:
+        out << "[DEBUG] " << msg << "\n";
+        break;
+    case QtInfoMsg:
+        out << "[INFO] " << msg << "\n";
+        break;
+    case QtWarningMsg:
+        out << "[WARNING] " << msg << "\n";
+        break;
+    case QtCriticalMsg:
+        out << "[CRITICAL] " << msg << "\n";
+        break;
+    case QtFatalMsg:
+        out << "[FATAL] " << msg << "\n";
+        abort();
+    }
+    out.flush();
+    if (debugOutputLabel && type != QtDebugMsg) {
         debugOutputLabel->setText(msg);
     }
 }// ############################################ FUNCTION END ################################################################

@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QFile>
+#include <QTextStream>
 #include <QEvent>
 #include <QKeyEvent>
 #include <QComboBox>
@@ -41,6 +42,7 @@ private slots:
 private:
     PartModel* partModel;
     QListView* resultsView;
+    QPushButton* btnSettings;
     QScrollArea* scrollSettings;
     QNetworkReply*        currentReply = nullptr;
     QPushButton*          searchButton;
@@ -50,7 +52,7 @@ private:
     bool noResults = false;
     int resultssize = 0;
     bool firstReq = true;
-    bool enterPressed = false;
+    bool settingsButtonChecked = false;
     bool cardCreateFinished = false;
     int total = 0; 
     bool prepend = false;
@@ -60,6 +62,9 @@ private:
     void killRowWidget(int row);
     void killAllWidgets();
     void resetSearch();
+    void saveSettings(const QString &filename);
+    void loadSettings(const QString &filename);
+    void initSettings();
     bool eventFilter(QObject* obj, QEvent* event) override;
     void initSupplier(int which, QComboBox* combobox);
     void createCards(const QList<PartData>& parts, int startRow, QPointer<PartSupplier> supplier, quint64 epoch, int scrollToRow = -1); 

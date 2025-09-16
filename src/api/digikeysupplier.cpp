@@ -9,13 +9,13 @@ DigikeySupplier::DigikeySupplier(QNetworkAccessManager& mgr, QObject* parent)
 }// ############################################ FUNCTION END ################################################################
 void DigikeySupplier::fetchTokenSync() {
     qDebug() << "DigikeySupplier Initializing...";
-    QNetworkRequest req{ QUrl(SSTR(TOKEN_URL)) };
+    QNetworkRequest req{ QUrl(SSTR(DIGIKEY_TOKEN_URL)) };
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
 
     QUrlQuery body;
     body.addQueryItem("grant_type", "client_credentials");
-    body.addQueryItem("client_id", SSTR(CLIENTID_DIGIKEY));
-    body.addQueryItem("client_secret", SSTR(CLIENT_SECRET));
+    body.addQueryItem("client_id", SSTR(DIGIKEY_CLIENTID));
+    body.addQueryItem("client_secret", SSTR(DIGIKEY_CLSECRET));
 
     QEventLoop loop;
     QNetworkReply* rep = m_netMgr.post(req, body.toString(QUrl::FullyEncoded).toUtf8());
@@ -54,11 +54,11 @@ QNetworkRequest DigikeySupplier::searchRequest(const QString& keyword,
 
     outPayload = QJsonDocument(root).toJson(QJsonDocument::Compact);
 
-    QNetworkRequest req{ QUrl(SSTR(SEARCH_URL)) };     // https://api.digikey.com/products/v4/search/keyword
+    QNetworkRequest req{ QUrl(SSTR(DIGIKEY_SEARCH_URL)) };     // https://api.digikey.com/products/v4/search/keyword
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     req.setRawHeader("Accept", "application/json");
     req.setRawHeader("Authorization", "Bearer " + accessToken_.toUtf8());
-    req.setRawHeader("X-DIGIKEY-Client-Id", SSTR(CLIENTID_DIGIKEY).toUtf8());
+    req.setRawHeader("X-DIGIKEY-Client-Id", SSTR(DIGIKEY_CLIENTID).toUtf8());
     req.setRawHeader("X-DIGIKEY-Locale-Site", "US");
     req.setRawHeader("X-DIGIKEY-Locale-Language", "en");
     req.setRawHeader("X-DIGIKEY-Locale-Currency", "USD");
@@ -73,8 +73,8 @@ QList<QJsonObject> DigikeySupplier::parseResults(const QByteArray& resp) {
     const auto obj = doc.object();
     const auto arr = obj.value("Products").toArray();
     for (const auto &v : arr) if (v.isObject()) list.append(v.toObject());
-    if (list.size() > REQUEST_LIMIT)
-        list = list.mid(0, REQUEST_LIMIT);
+    if (list.size() > SVAL(REQUEST_LIMIT))
+        list = list.mid(0, SVAL(REQUEST_LIMIT));
     return list;
 }// ############################################ FUNCTION END ################################################################
 #else

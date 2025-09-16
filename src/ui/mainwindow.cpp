@@ -1,21 +1,21 @@
 //FILE:  ui/mainwindow.cpp
 #include "mainwindow.h"
 
-
 #define LOG_ON
 
 MainWindow::MainWindow(QWidget* parent):QWidget(parent){
+    loadSettings(SSTR(CONFIG_FILENAME));
     setWindowTitle("Part Search");
-    resize(SVAL(WINDOW_SIZE_X), SVAL(WINDOW_SIZE_Y));
+    resize(SVAL(MAINWINDOW_SIZE_X), SVAL(MAINWINDOW_SIZE_Y));
     //======================== INITIALIZE ========================
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     QHBoxLayout* topLayout = new QHBoxLayout;
     QHBoxLayout* bottomLayout = new QHBoxLayout;
-    QPushButton* btnSettings = new QPushButton;
     QPushButton* importBtn = new QPushButton("Import to KiCAD");
     QPushButton* cancelBtn = new QPushButton("Cancel");
     QComboBox*   combobox = new QComboBox;
 
+    btnSettings = new QPushButton;
     debugOutputLabel = new QLabel;
     partModel = new PartModel(this);
     input = new QLineEdit;
@@ -65,27 +65,7 @@ MainWindow::MainWindow(QWidget* parent):QWidget(parent){
     bar->setSingleStep(SVAL(SCROLL_STEP));
 
     input->setFocus();//set foscus to input field at start
-
-
-    // ---------------------- SETTINGS PANEL ----------------------
-    QWidget* settingsPanel = new QWidget(this);
-    QVBoxLayout* settingsLayout = new QVBoxLayout(settingsPanel);
-    settingsPanel->setLayout(settingsLayout);
-    for (int i = 0; i < 10; ++i) {
-        QTextEdit* te = new QTextEdit;
-        QLabel* label = new QLabel(QString("Setting %1").arg(i+1));
-        QHBoxLayout* line = new QHBoxLayout;
-        te->setPlaceholderText(QString("Setting %1").arg(i+1));
-        te->setFixedHeight(30);
-        line->addWidget(label);
-        line->addWidget(te);
-        settingsLayout->addLayout(line);
-    }
-    settingsLayout->addStretch();
-    scrollSettings = new QScrollArea(this);
-    scrollSettings->setWidget(settingsPanel);
-    scrollSettings->setWidgetResizable(true);
-    scrollSettings->setVisible(false);
+    initSettings();
     mainLayout->insertWidget(1, scrollSettings); 
 
     //===================================== CONNECT ====================================
@@ -96,7 +76,9 @@ MainWindow::MainWindow(QWidget* parent):QWidget(parent){
     connect(btnSettings, &QPushButton::toggled, this, [this](bool checked){
         this->resultsView->setVisible(!checked);
         this->scrollSettings->setVisible(checked);
-        checked ? this->adjustSize() : resize(700, 500);
+        
+        checked ? this->adjustSize() : resize(SVAL(MAINWINDOW_SIZE_X), SVAL(MAINWINDOW_SIZE_Y));
+        qInfo() << (checked ? "Settings Selected" : "Results List Selected");
     });
     connect(cancelBtn, &QPushButton::clicked, [=]() { qInfo() << "Canceled"; });
     connect(bar, &QScrollBar::valueChanged, this, &MainWindow::onScrollChanged);
@@ -126,6 +108,7 @@ MainWindow::~MainWindow() {
     resetSearch();
     delete currentSupplier;
     currentSupplier = nullptr;
+    saveSettings(SSTR(CONFIG_FILENAME));
 }
 void MainWindow::initSupplier(int which, QComboBox* combobox) {
     //error checks
@@ -137,11 +120,13 @@ void MainWindow::initSupplier(int which, QComboBox* combobox) {
     combobox->blockSignals(true);
     combobox->clear();
     const SupplierType& selected = suppliers[which];
-    combobox->addItem(QIcon(selected.iconPath), selected.name);
-    for (size_t i = 0; i < supplierCount; ++i) { //add the rest
-        if (static_cast<int>(i) == which) continue; //skip selected
+    QString displayText = QString("[1] %1").arg(suppliers[which].name);
+    combobox->addItem(QIcon(selected.iconPath), displayText);
+    for (size_t i = 0; i < supplierCount; ++i) { 
+        if (static_cast<int>(i) == which) continue; // skip selected
         const SupplierType& s = suppliers[i];
-        combobox->addItem(QIcon(s.iconPath), s.name);
+        displayText = QString("[%1] %2").arg(i+2).arg(s.name);
+        combobox->addItem(QIcon(s.iconPath), displayText);
     }
     combobox->setCurrentIndex(0);
     combobox->blockSignals(false);
@@ -158,6 +143,46 @@ void MainWindow::initSupplier(int which, QComboBox* combobox) {
             break;
     }
 }
+void MainWindow::initSettings(){// initialize Settings Panel
+    QWidget* settingsPanel = new QWidget(this);
+    QVBoxLayout* settingsLayout = new QVBoxLayout(settingsPanel);
+    settingsPanel->setLayout(settingsLayout);
+    for (int i = 0; i < CONSTRAIN_VISIBLE_SETTINGS; ++i) { //generate settings lines
+        QTextEdit* te = new QTextEdit;
+        QLabel* label = new QLabel(QString(SNM(i)));
+        QHBoxLayout* line = new QHBoxLayout;
+        // switch(i){
+        //     case SUPPLIER_DEFAULT:
+        //         te->setText(suppliers[i].name);
+        //         break;
+        //     default:
+        te->setText(!SVAL(i) ? SSTR(i) : QString::number(SVAL(i)));
+        // }
+        te->setFixedHeight(30);
+        line->addWidget(label);
+        line->addWidget(te);
+        settingsLayout->addLayout(line);
+        connect(te, &QTextEdit::textChanged, this, [=]() {
+            QString text = te->toPlainText();
+            bool ok = false;
+            int num = text.toInt(&ok);
+            if (ok) {
+                settings[i].val = num;
+                settings[i].str.clear();
+            } else {
+                settings[i].str = text;
+                settings[i].val = 0;
+            }
+            qDebug() << "Updated setting" << settings[i].name
+                    << "to" << (ok ? QString::number(num) : text);
+        });
+    }
+    settingsLayout->addStretch();
+    scrollSettings = new QScrollArea(this);
+    scrollSettings->setWidget(settingsPanel);
+    scrollSettings->setWidgetResizable(true);
+    scrollSettings->setVisible(false);
+}
 void MainWindow::resetSearch() {
     ++m_requestEpoch; // invalidate older replies
     offset = 0;
@@ -166,6 +191,14 @@ void MainWindow::resetSearch() {
     firstReq = true;
 }
 void MainWindow::onSearch() {
+    if (scrollSettings->isVisible()) {
+        scrollSettings->setVisible(false);
+        resultsView->setVisible(true); 
+        resize(SVAL(MAINWINDOW_SIZE_X), SVAL(MAINWINDOW_SIZE_Y));
+        btnSettings->blockSignals(true);
+        btnSettings->setChecked(false);  
+        btnSettings->blockSignals(false);
+    }
     QString kw = input->text().trimmed();
     if (kw.isEmpty()) return;
 
@@ -176,8 +209,7 @@ void MainWindow::onSearch() {
     fetchPartsAsync(currentSupplier, currentKeyword, false);
     input->setFocus();
 }
-void MainWindow::fetchPartsAsync(PartSupplier* supplier,const QString& keyword,bool prepend = false){
-
+void MainWindow::fetchPartsAsync(PartSupplier* supplier,const QString& keyword,bool prepend = false){ //from network request to results list
     if (prepend) { offset -= resultssize; }
     else         { offset += resultssize; }
     if (offset < 0) offset = 0;
@@ -267,12 +299,11 @@ void MainWindow::fetchPartsAsync(PartSupplier* supplier,const QString& keyword,b
 #endif
     });
 }
-void MainWindow::createCards(const QList<PartData>& parts, int startRow, QPointer<PartSupplier> supplier, quint64 epoch, int scrollToRow)
-{
+void MainWindow::createCards(const QList<PartData>& parts, int startRow, QPointer<PartSupplier> supplier, quint64 epoch, int scrollToRow){
     // do widget creation slightly later (safe), but handle scrolling AFTER layout
     QTimer::singleShot(0, this, [this, parts, startRow, supplier, epoch, scrollToRow]() {
         if (epoch != m_requestEpoch) {
-            qDebug() << "createCards aborted: epoch mismatch";
+            qWarning() << "createCards aborted: epoch mismatch";
             return;
         }
         if (!supplier) {
@@ -290,13 +321,11 @@ void MainWindow::createCards(const QList<PartData>& parts, int startRow, QPointe
             resultsView->setIndexWidget(idx, card);
         }
 
-        // Make sure view recalculates sizes
         resultsView->doItemsLayout();
         resultsView->updateGeometry();
 
         // If requested, scroll to the requested row (first newly added part)
         if (scrollToRow >= 0) {
-            // queue one more tick to ensure layout & geometry are stable
             QTimer::singleShot(0, this, [this, scrollToRow]() {
                 QModelIndex anchor = partModel->index(scrollToRow, 0);
                 if (anchor.isValid()) {
@@ -306,7 +335,7 @@ void MainWindow::createCards(const QList<PartData>& parts, int startRow, QPointe
                     }
                     resultsView->setFocus();
                 } else {
-                    qDebug() << "createCards: anchor index invalid for scrollToRow =" << scrollToRow;
+                    qWarning() << "createCards: anchor index invalid for scrollToRow =" << scrollToRow;
                 }
             });
         }
@@ -392,7 +421,7 @@ QWidget* MainWindow::createPartCard(const PartData& part, QPointer<PartSupplier>
     hCard->addLayout(rightCol, 1);
     return card;
 }// ############################################ FUNCTION END ################################################################
-void MainWindow::onScrollChanged(int value){
+void MainWindow::onScrollChanged(int value){//lazy scroll
     QScrollBar* bar = resultsView->verticalScrollBar();
     if (!bar) return;
     //qDebug() << "Scrollbar:" << value << " of " << bar->maximum();
@@ -401,7 +430,6 @@ void MainWindow::onScrollChanged(int value){
         qInfo() << "Loading new results...";
         fetchPartsAsync(currentSupplier, currentKeyword, false);
         while (partModel->rowCount() > SVAL(LIMIT_RESULTS)) { //optimization
-            //qDebug() << "onScrollChanged >  partModel->removeFirst();";
             killRowWidget(0);
             partModel->removeFirst(); //clear previous results
         }
@@ -433,7 +461,7 @@ void MainWindow::killAllWidgets() {
         killRowWidget(i);
     }
 }
-bool MainWindow::eventFilter(QObject* obj, QEvent* event) {
+bool MainWindow::eventFilter(QObject* obj, QEvent* event) { //allows to control by arrows on keyboard
     if (obj == input && event->type() == QEvent::KeyPress) {
         QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
         if (keyEvent->key() == Qt::Key_Up || keyEvent->key() == Qt::Key_Down) {
@@ -483,7 +511,7 @@ void MainWindow::exportData() {
     obj["priceBreaks"] = breaks;
     QJsonDocument doc(obj);
     // --------------------- stdout -------------------------
-    qInfo().noquote() << doc.toJson(QJsonDocument::Compact);
+    qInfo().noquote() << "Export[" << doc.toJson(QJsonDocument::Compact) << "]";
     // ---------------------- file --------------------------
     QFile file("export.json");
     if (file.open(QIODevice::WriteOnly)) {
@@ -495,3 +523,49 @@ void MainWindow::exportData() {
     }
     this->close(); //close window after export
 }
+void MainWindow::saveSettings(const QString &filename) {
+    QFile file(filename);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qWarning() << "Cannot open" << filename << "for writing";
+        return;
+    }
+    QTextStream out(&file);
+    for (int i = 0; i < SETTING_COUNT; ++i) {
+        QString value = settings[i].str.isEmpty()
+                        ? QString::number(settings[i].val)
+                        : settings[i].str;
+        out << settings[i].name << "=" << value << "\n";
+    }
+}
+void MainWindow::loadSettings(const QString &filename) {
+    QFile file(filename);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning() << "Config file not found, using defaults";
+        return;
+    }
+    QTextStream in(&file);
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+        if (line.isEmpty() || line.startsWith("#")) continue; // комментарии
+        QStringList parts = line.split('=');
+        if (parts.size() != 2) continue;
+        QString key = parts[0].trimmed();
+        QString value = parts[1].trimmed();
+
+        for (int i = 0; i < SETTING_COUNT; ++i) {
+            if (settings[i].name == key) {
+                bool ok = false;
+                int num = value.toInt(&ok);
+                if (ok) {
+                    settings[i].val = num;
+                    settings[i].str.clear();
+                } else {
+                    settings[i].str = value;
+                    settings[i].val = 0;
+                }
+                break;
+            }
+        }
+    }
+}
+

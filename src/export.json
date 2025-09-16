@@ -1,46 +1,36 @@
 {
-    "avail": "None",
-    "descr": "RF Adapters - In Series Waterproof IP68 BNC Female to BNC Female Bulkhead Adapter, with Copper Body",
-    "dsUrl": "https://www.mouser.com/datasheet/3/6148/1/FMAD1266.pdf",
-    "mfr": "Fairview Microwave",
-    "mfrno": "FMAD1266",
-    "prdUrl": "https://www.mouser.pl/ProductDetail/Fairview-Microwave/FMAD1266?qs=2FehpBK1j94g%252Bz4VniyEHg%3D%3D",
+    "avail": "442 In Stock",
+    "descr": "Analog to Digital Converters - ADC Eight-channel simul taneous-sampling 51",
+    "dsUrl": "https://www.mouser.pl/ProductDetail/Texas-Instruments/ADS127L18IRSHT?qs=a2MtRaTmNOSqUnhxoA3PqA%3D%3D",
+    "mfr": "Texas Instruments",
+    "mfrno": "ADS127L18IRSHT",
+    "prdUrl": "https://www.mouser.pl/ProductDetail/Texas-Instruments/ADS127L18IRSHT?qs=a2MtRaTmNOSqUnhxoA3PqA%3D%3D",
     "priceBreaks": [
         {
             "curr": "PLN",
-            "price": 71.25,
+            "price": 197.3300018310547,
             "qty": 1
         },
         {
             "curr": "PLN",
-            "price": 66.38999938964844,
+            "price": 170.24000549316406,
             "qty": 10
         },
         {
             "curr": "PLN",
-            "price": 63.63999938964844,
+            "price": 163.10000610351562,
             "qty": 25
         },
         {
             "curr": "PLN",
-            "price": 62.7400016784668,
-            "qty": 50
-        },
-        {
-            "curr": "PLN",
-            "price": 61.4900016784668,
+            "price": 147.7899932861328,
             "qty": 100
         },
         {
             "curr": "PLN",
-            "price": 60.630001068115234,
+            "price": 138.85000610351562,
             "qty": 250
-        },
-        {
-            "curr": "PLN",
-            "price": 60.20000076293945,
-            "qty": 500
         }
     ],
-    "prtnm": "67-FMAD1266"
+    "prtnm": "595-ADS127L18IRSHT"
 }
