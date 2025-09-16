@@ -26,3 +26,6 @@ __pycache__/
 
 # IDE
 .idea/
+
+# .gitignore
+config.cfgconfig.cfg

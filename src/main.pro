@@ -4,6 +4,7 @@ INCLUDEPATH += core
 CONFIG   += c++17
 TEMPLATE += app
 TARGET   = part_search
+DESTDIR = ../
 
 SOURCES += \
     main.cpp \

@@ -12,7 +12,7 @@ struct PartData {
     QString mfrno;
     QString mfr;
     QString descr;
-    QString prdUrl;
+    QString prUrl;
     QString dsUrl;
     QList<PriceBreak> breaks;
 };

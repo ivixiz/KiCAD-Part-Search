@@ -4,5 +4,6 @@
         <file>settings.png</file>
         <file>16x16px-mouser.png</file>
         <file>16x16px-digikey.png</file>
+        <file>512x512-partSearch.png</file>
     </qresource>
 </RCC>

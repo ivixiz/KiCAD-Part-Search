@@ -4,29 +4,30 @@
 #define LOG_ON
 
 MainWindow::MainWindow(QWidget* parent):QWidget(parent){
-    loadSettings(SSTR(CONFIG_FILENAME));
+    loadSettings(SSTR(CONFIG_FILENAME));//<-- macro to access settings variables
     setWindowTitle("Part Search");
+    setWindowIcon(QIcon(SSTR(ICON_PARTSEARCH_PATH)));
     resize(SVAL(MAINWINDOW_SIZE_X), SVAL(MAINWINDOW_SIZE_Y));
     //======================== INITIALIZE ========================
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     QHBoxLayout* topLayout = new QHBoxLayout;
     QHBoxLayout* bottomLayout = new QHBoxLayout;
-    QPushButton* importBtn = new QPushButton("Import to KiCAD");
-    QPushButton* cancelBtn = new QPushButton("Cancel");
+    //QPushButton* importBtn = new QPushButton("Import to KiCAD");
     QComboBox*   combobox = new QComboBox;
 
     btnSettings = new QPushButton;
     debugOutputLabel = new QLabel;
     partModel = new PartModel(this);
     input = new QLineEdit;
-    searchButton = new QPushButton("Search");
+    //searchButton = new QPushButton("Search");
     resultsView = new QListView(this);
+
     //=============================== LAYOUT ===============================
-    input->setPlaceholderText("Enter keyword or part number");
+    updatePlaceholder();
     input->installEventFilter(this);
 
     combobox->setIconSize(QSize(SVAL(ICON_COMBOBOX_SIZE), SVAL(ICON_COMBOBOX_SIZE)));
-    initSupplier(SVAL(SUPPLIER_DEFAULT), combobox); //default supplier
+    initSupplier(combobox); 
 
     btnSettings->setIcon(QIcon(SSTR(ICON_SETTINGS_PATH)));
     btnSettings->setIconSize(QSize(SVAL(ICON_SETTINGS_SIZE),SVAL(ICON_SETTINGS_SIZE)));
@@ -34,7 +35,7 @@ MainWindow::MainWindow(QWidget* parent):QWidget(parent){
     btnSettings->setCheckable(true);
 
     topLayout->addWidget(input);
-    topLayout->addWidget(searchButton);
+    //topLayout->addWidget(searchButton);
     topLayout->addWidget(combobox);
     topLayout->addWidget(btnSettings);
     mainLayout->addLayout(topLayout);
@@ -46,7 +47,7 @@ MainWindow::MainWindow(QWidget* parent):QWidget(parent){
     resultsView->setResizeMode(QListView::Adjust); 
     resultsView->setWordWrap(true);
     resultsView->setWrapping(false);
-
+    
 
     mainLayout->addWidget(resultsView);
 
@@ -57,8 +58,7 @@ MainWindow::MainWindow(QWidget* parent):QWidget(parent){
 #endif
 
     bottomLayout->addWidget(debugOutputLabel);
-    bottomLayout->addWidget(importBtn);
-    bottomLayout->addWidget(cancelBtn);
+    //bottomLayout->addWidget(importBtn);
     mainLayout->addLayout(bottomLayout);
 
     QScrollBar* bar = resultsView->verticalScrollBar();
@@ -68,7 +68,13 @@ MainWindow::MainWindow(QWidget* parent):QWidget(parent){
     initSettings();
     mainLayout->insertWidget(1, scrollSettings); 
 
+
+
     //===================================== CONNECT ====================================
+    //connect(cancelBtn, &QPushButton::clicked, [=]() { qInfo() << "Canceled"; });
+    connect(bar, &QScrollBar::valueChanged, this, &MainWindow::onScrollChanged);
+    //connect(searchButton, &QPushButton::clicked, this, &MainWindow::onSearch);
+    connect(input, &QLineEdit::returnPressed, this, &MainWindow::onSearch);
     connect(resultsView, &QListView::activated, this, [this](const QModelIndex &index){
         if (!index.isValid()) return;
         exportData();
@@ -78,30 +84,20 @@ MainWindow::MainWindow(QWidget* parent):QWidget(parent){
         this->scrollSettings->setVisible(checked);
         
         checked ? this->adjustSize() : resize(SVAL(MAINWINDOW_SIZE_X), SVAL(MAINWINDOW_SIZE_Y));
-        qInfo() << (checked ? "Settings Selected" : "Results List Selected");
+        qInfo() << (checked ? "Settings Selected" : "Results List Selected"); 
+        updatePlaceholder();
+
     });
-    connect(cancelBtn, &QPushButton::clicked, [=]() { qInfo() << "Canceled"; });
-    connect(bar, &QScrollBar::valueChanged, this, &MainWindow::onScrollChanged);
-    connect(searchButton, &QPushButton::clicked, this, &MainWindow::onSearch);
-    connect(input, &QLineEdit::returnPressed, this, &MainWindow::onSearch);
-    connect(combobox, &QComboBox::currentTextChanged, this, [=](const QString& text) {
-        qDebug() << "MainWindow > Combobox switched";
+    connect(combobox, QOverload<int>::of(&QComboBox::currentIndexChanged),this, [=](int index) {
+        qDebug() << "MainWindow > Combobox switched to index:" << index;
         bar->blockSignals(true);
         ++m_requestEpoch;
-        if (currentReply) { // abort old reply
-            currentReply->abort();
-            currentReply->deleteLater();
-            currentReply = nullptr;
-        }
+        if (currentReply) { currentReply->abort(); currentReply->deleteLater(); currentReply = nullptr; }
+        if (currentSupplier) { currentSupplier->deleteLater(); currentSupplier = nullptr; }
         resetSearch();
-        if (currentSupplier) {
-            currentSupplier->deleteLater();
-            currentSupplier = nullptr;
-        }
-        if      (text == "Mouser") currentSupplier = new MouserSupplier(netMgr); 
-        else if (text == "DigiKey") currentSupplier = new DigikeySupplier(netMgr); // create new supplier
-
-        bar->blockSignals(false); 
+        selectSupplier(index);
+        SVAL(SUPPLIER) = index;
+        bar->blockSignals(false);
     });
 }
 MainWindow::~MainWindow() {
@@ -110,32 +106,29 @@ MainWindow::~MainWindow() {
     currentSupplier = nullptr;
     saveSettings(SSTR(CONFIG_FILENAME));
 }
-void MainWindow::initSupplier(int which, QComboBox* combobox) {
-    //error checks
-    if (!combobox) { qWarning() << "Error at initSupplier: combobox is null";   return; }
-    const size_t supplierCount = suppliers.size();
-    if (which < 0 || static_cast<size_t>(which) >= supplierCount) { 
-        qWarning() << "Error at initSupplier: invalid supplier index" << which; return; }
-
+void MainWindow::initSupplier(QComboBox* combobox) {
+    if (!combobox){ qWarning() << "Error at initSupplier(): combobox is null"; return; }
     combobox->blockSignals(true);
     combobox->clear();
-    const SupplierType& selected = suppliers[which];
-    QString displayText = QString("[1] %1").arg(suppliers[which].name);
-    combobox->addItem(QIcon(selected.iconPath), displayText);
-    for (size_t i = 0; i < supplierCount; ++i) { 
-        if (static_cast<int>(i) == which) continue; // skip selected
-        const SupplierType& s = suppliers[i];
-        displayText = QString("[%1] %2").arg(i+2).arg(s.name);
-        combobox->addItem(QIcon(s.iconPath), displayText);
+    for (const auto& s : suppliers){ combobox->addItem(QIcon(s.iconPath), s.name, s.id); }
+    int saved = SVAL(SUPPLIER);
+    if (saved >= 0 && saved < static_cast<int>(suppliers.size())) {
+        combobox->setCurrentIndex(saved);
+        selectSupplier(saved);
+    } else {
+        combobox->setCurrentIndex(MOUSER);
+        selectSupplier(MOUSER);
     }
-    combobox->setCurrentIndex(0);
     combobox->blockSignals(false);
+}
+void MainWindow::selectSupplier(int which){
+    qInfo() << "Selected supplier: " << which ;
     switch (which) {
-        case DIGIKEY:
-            currentSupplier = new DigikeySupplier(netMgr);
-            break;
         case MOUSER:
             currentSupplier = new MouserSupplier(netMgr);
+            break;
+        case DIGIKEY:
+            currentSupplier = new DigikeySupplier(netMgr);
             break;
         default:
             qWarning() << "initSupplier: unexpected supplier index, defaulting to Mouser";
@@ -148,17 +141,61 @@ void MainWindow::initSettings(){// initialize Settings Panel
     QVBoxLayout* settingsLayout = new QVBoxLayout(settingsPanel);
     settingsPanel->setLayout(settingsLayout);
     for (int i = 0; i < CONSTRAIN_VISIBLE_SETTINGS; ++i) { //generate settings lines
+        if (i == EXPORT_FLAGS) { //create checkboxes
+            QCheckBox* checkboxes[EXPORT_FIELDS_SIZE];
+            QLabel* label = new QLabel("Fields to Export", settingsPanel);
+            QFont f = label->font();
+            f.setBold(true);
+            f.setPointSize(f.pointSize() + 1);      // optional: make it slightly bigger
+            label->setFont(f);
+            label->setAlignment(Qt::AlignCenter);
+
+            // add top separator
+            QFrame* sepTop = new QFrame(settingsPanel);
+            sepTop->setFrameShape(QFrame::HLine);
+            sepTop->setFrameShadow(QFrame::Sunken);
+            sepTop->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+            settingsLayout->addWidget(sepTop);
+            settingsLayout->addWidget(label);
+            const int cols = 3; // change: 2,3,4... how many columns you want
+            QWidget* gridContainer = new QWidget(settingsPanel);
+            QGridLayout* grid = new QGridLayout(gridContainer);
+            // tighten spacing/margins to be compact
+            grid->setSpacing(6);                 // gap between checkboxes
+            grid->setContentsMargins(4, 2, 4, 2);
+            for (int j = 0; j < EXPORT_FIELDS_SIZE; ++j) {
+                checkboxes[j] = new QCheckBox(exportFields[j].name, gridContainer);
+                // make checkboxes small/compact
+                QFont f = checkboxes[j]->font();
+                f.setPointSize(f.pointSize() - 1);       // slightly smaller text
+                checkboxes[j]->setFont(f);
+                checkboxes[j]->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+                // set initial checked state from settings
+                checkboxes[j]->setChecked((SVAL(EXPORT_FLAGS) & (1 << j)) != 0);
+                // place into grid
+                int row = j / cols;
+                int col = j % cols;
+                grid->addWidget(checkboxes[j], row, col);
+                // update settings flag when toggled
+                connect(checkboxes[j], &QCheckBox::toggled, this, [this, j](bool checked){
+                    if (checked) SVAL(EXPORT_FLAGS) |= (1 << j);
+                    else          SVAL(EXPORT_FLAGS) &= ~(1 << j);
+                });
+            }
+            // add the grid widget to your main settings layout
+            settingsLayout->addWidget(gridContainer);
+            QFrame* sepBottom = new QFrame(settingsPanel);
+            sepBottom->setFrameShape(QFrame::HLine);
+            sepBottom->setFrameShadow(QFrame::Sunken);
+            sepBottom->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+            settingsLayout->addWidget(sepBottom);
+            continue;
+        }
         QTextEdit* te = new QTextEdit;
         QLabel* label = new QLabel(QString(SNM(i)));
         QHBoxLayout* line = new QHBoxLayout;
-        // switch(i){
-        //     case SUPPLIER_DEFAULT:
-        //         te->setText(suppliers[i].name);
-        //         break;
-        //     default:
         te->setText(!SVAL(i) ? SSTR(i) : QString::number(SVAL(i)));
-        // }
-        te->setFixedHeight(30);
+        te->setFixedHeight(SVAL(SETTINGS_TEXTBOX_SIZE_Y));
         line->addWidget(label);
         line->addWidget(te);
         settingsLayout->addLayout(line);
@@ -209,6 +246,16 @@ void MainWindow::onSearch() {
     fetchPartsAsync(currentSupplier, currentKeyword, false);
     input->setFocus();
 }
+void MainWindow::updatePlaceholder() {
+    if (SSTR(API_KEY_MOUSER).length()   < 35  ||
+       ((SSTR(DIGIKEY_CLSECRET).length() < 47) && (SSTR(DIGIKEY_CLIENTID).length() < 63))) {
+        apierror = true;
+        input->setPlaceholderText("Provide correct API first");
+    } else {
+        apierror = false;
+        input->setPlaceholderText("Provide keyword or part number and press <Enter>");
+    }
+}
 void MainWindow::fetchPartsAsync(PartSupplier* supplier,const QString& keyword,bool prepend = false){ //from network request to results list
     if (prepend) { offset -= resultssize; }
     else         { offset += resultssize; }
@@ -235,15 +282,14 @@ void MainWindow::fetchPartsAsync(PartSupplier* supplier,const QString& keyword,b
 
         int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(); qInfo() << "HTTP status:" << status;
         
-        if (status == 0 || reply->error() != QNetworkReply::NoError) {                qWarning() << "Network error:" << reply->errorString(); return; }
-        if (firstReq) { total = sup->totalFromJson(resp);                                qInfo() << "Total available parts:" << total; firstReq = false; }
+        if (status == 0 || reply->error() != QNetworkReply::NoError) { qWarning() << "Network error:" << reply->errorString(); return; }
+        if (firstReq) { total = sup->totalFromJson(resp);qInfo() << "Total available parts:" << total; firstReq = false; }
 
         qInfo() << "Parsing results...";
     
         const QList<QJsonObject> results = sup->parseResults(resp); //qInfo() << "First result:" << results.at(0);
         
         QList<PartData> newParts;
-        
         
         resultssize = results.size();
         if(resultssize == 0){ noResults = true; qInfo() << "No more results"; return; }
@@ -285,7 +331,9 @@ void MainWindow::fetchPartsAsync(PartSupplier* supplier,const QString& keyword,b
             }
         }
         
-        qInfo() << "Loaded" << offset+resultssize << "parts of" << total;
+        qInfo() << "Loaded" << offset+resultssize << "parts of" << total 
+                << (show_tip ? "| Move by '↑','↓' and press <Enter> to select. <Tab> to search again.":"");
+        if(show_tip){show_tip = false;}
 #ifdef SAVE_RESPONSE //save json response for debugging
         qInfo() << "Response body:" << resp;
         QFile file("response.txt");
@@ -395,7 +443,7 @@ QWidget* MainWindow::createPartCard(const PartData& part, QPointer<PartSupplier>
     pricesLayout->setSpacing(4);
 
     for (const auto &pb : part.breaks) {
-        float ext = pb.price * pb.qty * float(SVAL(VAT)+100);
+        float ext = pb.price * pb.qty * float(SVAL(VAT)+100)*0.01;
         auto row = new QHBoxLayout;
         row->addWidget(selectableLabel(QString::number(pb.qty)));
         row->addWidget(selectableLabel(QString(" %1 %2").arg(QString::number(pb.price, 'f', 2), pb.curr)));
@@ -432,8 +480,7 @@ void MainWindow::onScrollChanged(int value){//lazy scroll
         while (partModel->rowCount() > SVAL(LIMIT_RESULTS)) { //optimization
             killRowWidget(0);
             partModel->removeFirst(); //clear previous results
-        }
-    }
+    }   }
     // =============================== Lazy Scroll Up ==============================
     if (value <= SVAL(SCROLL_STEP) && offset > 0 && !currentReply) {
         qInfo() << "Loading previous results...";
@@ -442,26 +489,23 @@ void MainWindow::onScrollChanged(int value){//lazy scroll
             int last = partModel->rowCount() - 1; //clear previous results
             killRowWidget(last);
             partModel->removeLast();
-        }
-    }
+    }   }
 }
 void MainWindow::killRowWidget(int row) {
-    if (!resultsView || row < 0 || row >= partModel->rowCount()) return;
+    if (!resultsView || row < 0 || row >= partModel->rowCount()){ return; }
     QModelIndex idx = partModel->index(row, 0);
-    if (!idx.isValid()) return;
+    if (!idx.isValid()){ return; }
     QWidget* w = resultsView->indexWidget(idx);
-    if (w) {
-        resultsView->setIndexWidget(idx, nullptr);
-        w->deleteLater();
-    }
+    if (w) { resultsView->setIndexWidget(idx, nullptr);
+             w->deleteLater(); }
 }
-void MainWindow::killAllWidgets() {
+void MainWindow::killAllWidgets() { //remove old cards for optimization
     if (!resultsView) return;
     for (int i = partModel->rowCount() - 1; i >= 0; --i) {
         killRowWidget(i);
     }
 }
-bool MainWindow::eventFilter(QObject* obj, QEvent* event) { //allows to control by arrows on keyboard
+bool MainWindow::eventFilter(QObject* obj, QEvent* event) { //control by arrows on keyboard
     if (obj == input && event->type() == QEvent::KeyPress) {
         QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
         if (keyEvent->key() == Qt::Key_Up || keyEvent->key() == Qt::Key_Down) {
@@ -473,42 +517,41 @@ bool MainWindow::eventFilter(QObject* obj, QEvent* event) { //allows to control 
                     if (first.isValid()) {
                         resultsView->setCurrentIndex(first);
                         if (auto *sel = resultsView->selectionModel()) {
-                            sel->setCurrentIndex(first, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-                        }
+                            sel->setCurrentIndex(first, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows); }
                         resultsView->setFocus();
-                    }
-                }
-            }
-            return true;
-        }
-    }
+            }   }   }
+        return true;
+    }   }
     return QWidget::eventFilter(obj, event);
 }
 void MainWindow::exportData() {
     qInfo() << "Importing part to KiCAD...";
     QModelIndex idx = resultsView->currentIndex();
-    if (!idx.isValid()) { qWarning() << "No part selected for export"; return; }
+    if (!idx.isValid()) { qWarning() << "Error at exportData(): No part selected for export"; return; }
     QVariant v = partModel->data(idx, Qt::UserRole);
-    if (!v.isValid()) { qWarning() << "Invalid part data at index:" << idx; return; }
+    if (!v.isValid()) { qWarning() << "Error at exportData(): Invalid part data at index:" << idx; return; }
     PartData part = v.value<PartData>();
     // Create JSON object
     QJsonObject obj;
-    obj["prtnm"] = part.prtnm;
-    obj["mfrno"] = part.mfrno;
-    obj["mfr"]   = part.mfr;
-    obj["descr"] = part.descr;
-    obj["avail"] = part.avail;
-    obj["prdUrl"] = part.prdUrl;
-    obj["dsUrl"]  = part.dsUrl;
-    QJsonArray breaks;
-    for (const auto& pb : part.breaks) {
-        QJsonObject b;
-        b["qty"]   = pb.qty;
-        b["price"] = pb.price;
-        b["curr"]  = pb.curr;
-        breaks.append(b);
+    if (SVAL(EXPORT_FLAGS) & (1 << EID(PRTNM))){ obj["prtnm"] = part.prtnm; }
+    if (SVAL(EXPORT_FLAGS) & (1 << EID(MFRNO))){ obj["mfrno"] = part.mfrno; }
+    if (SVAL(EXPORT_FLAGS) & (1 << EID(MFR)))  { obj["mfr"]   = part.mfr;   }
+    if (SVAL(EXPORT_FLAGS) & (1 << EID(DESCR))){ obj["descr"] = part.descr; }
+    if (SVAL(EXPORT_FLAGS) & (1 << EID(AVAIL))){ obj["avail"] = part.avail; }
+    if (SVAL(EXPORT_FLAGS) & (1 << EID(PRURL))){ obj["prUrl"] = part.prUrl; }
+    if (SVAL(EXPORT_FLAGS) & (1 << EID(DSURL))){ obj["dsUrl"] = part.dsUrl; }
+    if (SVAL(EXPORT_FLAGS) & (1 << EID(SUPPL))){ obj["suppl"] = part.suppl; }
+    if((SVAL(EXPORT_FLAGS) & (1 << EID(QTY))) | (SVAL(EXPORT_FLAGS)  & (1 << EID(PRICE)))) {
+        QJsonArray breaks; //\--- skip this part if 0 bits ---\//
+        for (const auto& pb : part.breaks) {
+            QJsonObject b;
+            if (SVAL(EXPORT_FLAGS) & (1 << EID(QTY)))  { b["qty"]   = pb.qty;  }
+            if (SVAL(EXPORT_FLAGS) & (1 << EID(PRICE))){ b["price"] = pb.price;
+                                                         b["curr"]  = pb.curr; }
+            breaks.append(b);
+        }
+        obj["priceBreaks"] = breaks;
     }
-    obj["priceBreaks"] = breaks;
     QJsonDocument doc(obj);
     // --------------------- stdout -------------------------
     qInfo().noquote() << "Export[" << doc.toJson(QJsonDocument::Compact) << "]";
@@ -518,9 +561,7 @@ void MainWindow::exportData() {
         file.write(doc.toJson(QJsonDocument::Indented));
         file.close();
         qInfo() << "Part exported to export.json";
-    } else {
-        qWarning() << "Cannot open export.json for writing:" << file.errorString();
-    }
+    } else { qWarning() << "Error at exportData(): Cannot open export.json for writing:" << file.errorString();}
     this->close(); //close window after export
 }
 void MainWindow::saveSettings(const QString &filename) {
@@ -531,37 +572,28 @@ void MainWindow::saveSettings(const QString &filename) {
     }
     QTextStream out(&file);
     for (int i = 0; i < SETTING_COUNT; ++i) {
-        QString value = settings[i].str.isEmpty()
-                        ? QString::number(settings[i].val)
-                        : settings[i].str;
-        out << settings[i].name << "=" << value << "\n";
+        out << settings[i].name
+            << "=int:" << settings[i].val
+            << ";str:" << settings[i].str << "\n";
     }
 }
 void MainWindow::loadSettings(const QString &filename) {
     QFile file(filename);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        qWarning() << "Config file not found, using defaults";
-        return;
-    }
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) { qWarning() << "Config file not found, using defaults"; return;}
     QTextStream in(&file);
     while (!in.atEnd()) {
         QString line = in.readLine().trimmed();
-        if (line.isEmpty() || line.startsWith("#")) continue; // комментарии
-        QStringList parts = line.split('=');
-        if (parts.size() != 2) continue;
-        QString key = parts[0].trimmed();
-        QString value = parts[1].trimmed();
-
+        if (line.isEmpty() || line.startsWith("#")) continue;
+        QStringList kv = line.split('=');
+        if (kv.size() != 2) continue;
+        QString key = kv[0].trimmed();
+        QString value = kv[1].trimmed();
         for (int i = 0; i < SETTING_COUNT; ++i) {
             if (settings[i].name == key) {
-                bool ok = false;
-                int num = value.toInt(&ok);
-                if (ok) {
-                    settings[i].val = num;
-                    settings[i].str.clear();
-                } else {
-                    settings[i].str = value;
-                    settings[i].val = 0;
+                QStringList parts = value.split(';'); //expected "val:123;str:abc"
+                for (auto &p : parts) {
+                    if (p.startsWith("int:"))     {settings[i].val = p.mid(4).toInt();} 
+                    else if (p.startsWith("str:")){settings[i].str = p.mid(4);        }
                 }
                 break;
             }

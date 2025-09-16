@@ -130,27 +130,42 @@ int DigikeySupplier::totalFromJson(const QByteArray& resp) {
     const auto obj = doc.object();
     return obj.value("ProductsCount").toInt(0);
 }// ############################################ FUNCTION END ################################################################
-QList<PriceBreak>  DigikeySupplier::parsePriceBreaks(const QJsonObject& part){
-    //qDebug() << "Parsing price breaks...";
+QList<PriceBreak> DigikeySupplier::parsePriceBreaks(const QJsonObject& part) {
     QList<PriceBreak> breaks;
-    QJsonArray arr = part.value("PriceBreaks").toArray();
     QJsonArray variations = part.value("ProductVariations").toArray();
-    if (!variations.isEmpty()) {
-        QJsonObject var0 = variations.first().toObject();
-        QJsonArray stdPricing = var0.value("StandardPricing").toArray();
+    auto parsePricing = [&](const QJsonObject& variation) {
+        QJsonArray stdPricing = variation.value("StandardPricing").toArray();
         for (const QJsonValue &pv : stdPricing) {
             QJsonObject o = pv.toObject();
             PriceBreak pb;
-            pb.qty  = o.value("BreakQuantity").toInt();
+            pb.qty = o.value("BreakQuantity").toInt();
             pb.price = (float)o.value("UnitPrice").toDouble();
             pb.curr = "USD";
             breaks.append(pb);
+        }
+    };
+    //Cut Tape (CT)
+    for (const QJsonValue &v : variations) {
+        QJsonObject variation = v.toObject();
+        QString pkgName = variation.value("PackageType").toObject().value("Name").toString();
+        if (pkgName.contains("Cut Tape", Qt::CaseInsensitive)) {
+            parsePricing(variation);
+            break;
+        }
+    }
+    //Tape & Reel (TR)
+    for (const QJsonValue &v : variations) {
+        QJsonObject variation = v.toObject();
+        QString pkgName = variation.value("PackageType").toObject().value("Name").toString();
+        if (pkgName.contains("Tape & Reel", Qt::CaseInsensitive)) {
+            parsePricing(variation);
+            break; 
         }
     }
     return breaks;
 }// ############################################ FUNCTION END ################################################################
 void DigikeySupplier::fetchImageIntoWidget(const QString& url, QLabel* image) {
-    qDebug() << "Fetching images...";
+    //qDebug() << "Fetching images...";
     if (url.isEmpty() || !image) { qWarning() << "Empty url or image widget is null"; return; }
     QString imgUrl = url;
     if (imgUrl.startsWith('/')) imgUrl.prepend("https://www.digikey.com");
@@ -188,7 +203,7 @@ PartData DigikeySupplier::toPartData(const QJsonObject& part) {
     pd.descr  = part["Description"].toObject().value("ProductDescription").toString();
     pd.mfr    = part["Manufacturer"].toObject().value("Name").toString();
     pd.mfrno  = part.value("ManufacturerProductNumber").toString();
-    pd.prdUrl = part.value("ProductUrl").toString();
+    pd.prUrl = part.value("ProductUrl").toString();
     pd.dsUrl  = part.value("DatasheetUrl").toString();
     pd.imgUrl = part.value("PhotoUrl").toString();
     QJsonArray variations = part.value("ProductVariations").toArray();
