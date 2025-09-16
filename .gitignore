@@ -28,4 +28,6 @@ __pycache__/
 .idea/
 
 # .gitignore
-config.cfgconfig.cfg
+config.cfg
+.venv/
+.vscode/
