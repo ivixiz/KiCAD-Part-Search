@@ -1,5 +1,5 @@
-cd $(pwd)/src;
+cd ./src;
 qmake;
 make;
-chmod +x $(pwd)/part_search;
+chmod +x ./../part_search;
 ./../part_search;
