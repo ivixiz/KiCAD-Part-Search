@@ -38,8 +38,8 @@ make        # build
 
 ## Screenshots
 ### Main Window
-![Main Window - Search Results List](./docs/screenshot1.png)
+![Main Window - Search Results List](./src/docs/screenshot1.png)
 ### Search Results
-![Settings Tab](./docs/screenshot2.png)
+![Settings Tab](./src/docs/screenshot2.png)
 ### Part Details
-![Result - Filled fields](./docs/screenshot3.png)
+![Result - Filled fields](./src/docs/screenshot3.png)
