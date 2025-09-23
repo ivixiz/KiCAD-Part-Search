@@ -37,9 +37,9 @@ make        # build
 ```
 
 ## Screenshots
-### Main Window
-![Main Window - Search Results List](./src/docs/screenshot1.png)
-### Search Results
+### Main Window of Plugin
+![Main Window](./src/docs/screenshot1.png)
+### Settings Tab
 ![Settings Tab](./src/docs/screenshot2.png)
-### Part Details
-![Result - Filled fields](./src/docs/screenshot3.png)
+### Result
+![Result](./src/docs/screenshot3.png)
